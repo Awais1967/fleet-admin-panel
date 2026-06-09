@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from "react";
 import RecipientsMultiSelect from "./RecipientsMultiSelect";
+import * as notificationsService from "../../services/notifications.service";
 
-export default function SendNotificationCard({ drivers = [] }) {
+export default function SendNotificationCard({ drivers = [], onSent, onError }) {
   const [message, setMessage] = useState("");
   const [recipients, setRecipients] = useState([]); // empty => All
   const [sms, setSms] = useState(true);
   const [inApp, setInApp] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const options = useMemo(
     () => drivers.map((d) => ({ id: d.id, label: d.name })),
@@ -14,10 +16,36 @@ export default function SendNotificationCard({ drivers = [] }) {
 
   const canSend = message.trim() && (sms || inApp);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!canSend) return;
-    // hook to your service here
-    setMessage("");
+
+    const selectedOptions =
+      recipients.length === 0
+        ? options
+        : options.filter((option) => recipients.includes(option.id));
+
+    try {
+      setSending(true);
+      await notificationsService.sendNotification({
+        message: message.trim(),
+        recipientIds: recipients,
+        recipientNames: selectedOptions.map((option) => option.label),
+        sentTo:
+          recipients.length === 0
+            ? "All Driver"
+            : selectedOptions.map((option) => option.label).join(", "),
+        sms,
+        inApp,
+        status: "Delivered",
+      });
+      setMessage("");
+      setRecipients([]);
+      onSent?.();
+    } catch (ex) {
+      onError?.(ex);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -78,10 +106,10 @@ export default function SendNotificationCard({ drivers = [] }) {
         <div className="pt-6">
           <button
             onClick={handleSend}
-            disabled={!canSend}
+            disabled={!canSend || sending}
             className="h-10 rounded-md bg-teal-600 text-white text-sm font-medium px-6 hover:bg-teal-700 disabled:opacity-50 disabled:hover:bg-teal-600"
           >
-            Send Notification
+            {sending ? "Sending..." : "Send Notification"}
           </button>
         </div>
       </div>

@@ -1,58 +1,52 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Pagination from "../shared/Pagination";
+import ErrorState from "../shared/ErrorState";
+import * as notificationsService from "../../services/notifications.service";
 
-const MOCK = Array.from({ length: 60 }).map((_, i) => ({
-  id: `nt_${i}`,
-  message:
-    i % 2 === 0
-      ? "Van-19 assigned for today"
-      : "Complete inspection before 10 AM",
-  sentTo: "Ahmed Ali",
-  dateTime: "13 Aug 2025, 08:05 AM",
-  status: i % 2 === 0 ? "Delivered" : "Failed",
-}));
+function getHistoryErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to notification history. Update Firestore rules to allow this admin account to read notifications.";
+  }
 
-export default function NotificationHistoryTable() {
+  return error?.message || "Unable to load notification history.";
+}
+
+export default function NotificationHistoryTable({ refreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
-  const [cursor, setCursor] = useState(0);
-  const lazyPageSize = 10;
-  const sentinelRef = useRef(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setItems(MOCK.slice(0, lazyPageSize));
-      setCursor(lazyPageSize);
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (loading) return;
-    const el = sentinelRef.current;
-    if (!el) return;
+    const load = async () => {
+      setLoading(true);
+      setError("");
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
-        setItems((prev) => {
-          if (cursor >= MOCK.length) return prev;
-          const next = MOCK.slice(cursor, cursor + lazyPageSize);
-          return [...prev, ...next];
-        });
-        setCursor((c) => Math.min(MOCK.length, c + lazyPageSize));
-      },
-      { rootMargin: "300px" },
-    );
+      try {
+        const history = await notificationsService.getHistory();
+        if (!cancelled) setItems(history || []);
+      } catch (ex) {
+        if (!cancelled) {
+          setItems([]);
+          setError(getHistoryErrorMessage(ex));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loading, cursor]);
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const rows = useMemo(() => items, [items]);
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(() => {
@@ -62,6 +56,7 @@ export default function NotificationHistoryTable() {
       cancelled = true;
     };
   }, [items]);
+
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageRows = rows.slice(
@@ -78,6 +73,12 @@ export default function NotificationHistoryTable() {
       </div>
 
       <div className="px-6 py-6">
+        {error ? (
+          <div className="mb-4">
+            <ErrorState message={error} />
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-4 text-xs font-semibold text-slate-600 pb-3">
           <div>Message</div>
           <div>Sent To</div>
@@ -102,7 +103,13 @@ export default function NotificationHistoryTable() {
                 </div>
               </div>
             ))}
-            <div ref={sentinelRef} className="h-6" />
+
+            {!pageRows.length ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No notification history found.
+              </div>
+            ) : null}
+
             {total > pageSize ? (
               <div className="pt-4">
                 <Pagination

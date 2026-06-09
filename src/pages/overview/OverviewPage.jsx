@@ -3,7 +3,16 @@ import { useNavigate } from "react-router-dom";
 import OverviewKpiCards from "../../components/overview/OverviewKpiCards";
 import TodaysInspectionsTable from "../../components/overview/TodaysInspectionsTable";
 import DamageAlertsPanel from "../../components/overview/DamageAlertsPanel";
+import ErrorState from "../../components/shared/ErrorState";
 import * as overviewService from "../../services/overview.service";
+
+function getOverviewErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to overview data. Update Firestore rules to allow this admin account to read vehicles, users, and inspections.";
+  }
+
+  return error?.message || "Unable to load overview.";
+}
 
 export default function OverviewPage() {
   const nav = useNavigate();
@@ -11,21 +20,32 @@ export default function OverviewPage() {
   const [kpis, setKpis] = useState(null);
   const [today, setToday] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      setLoading(true);
-      const [k, t, a] = await Promise.all([
-        overviewService.getKpis(),
-        overviewService.getTodaysInspections(),
-        overviewService.getDamageAlerts(),
-      ]);
-      if (!mounted) return;
-      setKpis(k);
-      setToday(t);
-      setAlerts(a);
-      setLoading(false);
+      try {
+        setLoading(true);
+        setError("");
+        const [k, t, a] = await Promise.all([
+          overviewService.getKpis(),
+          overviewService.getTodaysInspections(),
+          overviewService.getDamageAlerts(),
+        ]);
+        if (!mounted) return;
+        setKpis(k);
+        setToday(t);
+        setAlerts(a);
+      } catch (ex) {
+        if (!mounted) return;
+        setKpis(null);
+        setToday([]);
+        setAlerts([]);
+        setError(getOverviewErrorMessage(ex));
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
     return () => (mounted = false);
   }, []);
@@ -33,6 +53,7 @@ export default function OverviewPage() {
   return (
     <div className="space-y-6">
       <div className="text-xl font-semibold text-slate-900">Overview</div>
+      {error ? <ErrorState message={error} /> : null}
 
       <OverviewKpiCards
         loading={loading}

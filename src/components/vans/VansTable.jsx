@@ -200,7 +200,7 @@ export default function VansTable() {
             onClick={openAdd}
             className="h-10 rounded-md bg-teal-600 text-white text-sm font-medium px-4 hover:bg-teal-700 flex items-center gap-2"
           >
-            <FiPlus />+ Add New Van
+            <FiPlus /> Add New Van
           </button>
         </div>
       </div>
