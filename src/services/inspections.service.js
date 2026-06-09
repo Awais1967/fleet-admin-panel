@@ -34,10 +34,110 @@ const MOCK_INSPECTIONS = [
   })),
 ];
 
+function formatFirebaseDate(value, options = {}) {
+  if (!value) return "-";
+
+  const date =
+    typeof value.toDate === "function"
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : null;
+
+  if (!date) return String(value);
+
+  return new Intl.DateTimeFormat("en", options).format(date);
+}
+
+function formatDate(value) {
+  return formatFirebaseDate(value, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatTime(value) {
+  return formatFirebaseDate(value, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function mapInspectionStatus(inspection) {
+  const status = String(inspection.status || "").toLowerCase();
+  const phase = String(inspection.inspectionPhase || "").toLowerCase();
+
+  if (status === "approved" || phase === "complete") return "Completed";
+  if (status === "started" || phase === "started") return "In Progress";
+  return inspection.status || "Not Started";
+}
+
+function getImageUrl(image) {
+  if (!image) return "";
+  if (typeof image === "string") return image;
+  return image.url || image.imageUrl || image.downloadUrl || image.path || "";
+}
+
+function mapInspectionImages(images = [], inspection) {
+  return (images || [])
+    .map((image, index) => ({
+      id: image?.id || `photo_${index + 1}`,
+      url: getImageUrl(image),
+      tagged: Boolean(image?.tagged || image?.damageDetected),
+      tag: image?.tag,
+      tagLabel: image?.tagLabel,
+      capturedOn: formatDate(image?.capturedAt || inspection.submittedAt),
+      capturedAt: formatTime(image?.capturedAt || inspection.submittedAt),
+      gps: image?.gps || "-",
+      device: image?.device || "-",
+    }))
+    .filter((image) => image.url);
+}
+
+function mapInspectionToUi(inspection) {
+  const damageCount = Number(inspection.damageCount || 0);
+  const aiStatus = damageCount > 0 ? "Damage" : "Clear";
+  const photos = mapInspectionImages(inspection.images || [], inspection);
+
+  return {
+    ...inspection,
+    id: inspection.id,
+    driverName: inspection.driverName || "-",
+    driverId: inspection.driverId || inspection.userId || "-",
+    driverEmail: inspection.driverEmail || "",
+    driverPhone: inspection.driverPhone || "",
+    vanNumber: inspection.vehicleDisplayName || "-",
+    vehicleId: inspection.vehicleId || "",
+    vin: inspection.vin || "",
+    model: inspection.model || "",
+    assignTime: formatTime(inspection.startedAt),
+    status: mapInspectionStatus(inspection),
+    submitTime: formatTime(inspection.submittedAt),
+    submissionTime: formatTime(inspection.submittedAt),
+    inspectionDate: formatDate(inspection.submittedAt || inspection.startedAt),
+    aiStatus,
+    totalInspections: inspection.capturedImageCount ?? "-",
+    damageRate: damageCount > 0 ? `${damageCount} found` : "-",
+    lastInspection: formatDate(inspection.submittedAt),
+    photos,
+    aiIssues:
+      damageCount > 0
+        ? [
+            {
+              label: inspection.damageSummary || `${damageCount} damage found`,
+              type: "damage",
+            },
+          ]
+        : [],
+  };
+}
+
 export async function getInspections() {
   if (isFirebaseConfigured) {
     const inspections = await getCollection("inspections");
-    return inspections.length ? inspections : MOCK_INSPECTIONS;
+    const mappedInspections = inspections.map(mapInspectionToUi);
+    return mappedInspections.length ? mappedInspections : MOCK_INSPECTIONS;
   }
 
   return MOCK_INSPECTIONS;
@@ -46,7 +146,7 @@ export async function getInspections() {
 export async function getInspectionById(id) {
   if (isFirebaseConfigured) {
     const inspection = await getDocument("inspections", id);
-    if (inspection) return inspection;
+    if (inspection) return mapInspectionToUi(inspection);
   }
 
   const base =
@@ -86,8 +186,34 @@ export async function getInspectionById(id) {
 
 export async function getBeforeAfterByInspectionId(id) {
   if (isFirebaseConfigured) {
-    const beforeAfter = await getDocument("inspectionBeforeAfter", id);
-    if (beforeAfter) return beforeAfter;
+    const inspection = await getDocument("inspections", id);
+    if (inspection) {
+      const mappedInspection = mapInspectionToUi(inspection);
+      const photos = mappedInspection.photos || [];
+      const beforePhoto = photos[0];
+      const afterPhoto = photos[photos.length > 1 ? photos.length - 1 : 0];
+      const damageCount = Number(inspection.damageCount || 0);
+
+      return {
+        before: {
+          url: beforePhoto?.url,
+          capturedOn: beforePhoto?.capturedOn || mappedInspection.inspectionDate,
+          capturedAt: beforePhoto?.capturedAt || mappedInspection.submitTime,
+          gps: beforePhoto?.gps || "-",
+          device: beforePhoto?.device || "-",
+          label: "Before",
+        },
+        after: {
+          url: afterPhoto?.url,
+          capturedOn: afterPhoto?.capturedOn || mappedInspection.inspectionDate,
+          capturedAt: afterPhoto?.capturedAt || mappedInspection.submitTime,
+          gps: afterPhoto?.gps || "-",
+          device: afterPhoto?.device || "-",
+          label: "After",
+          tag: damageCount > 0 ? inspection.damageSummary : "No damage",
+        },
+      };
+    }
   }
 
   return {

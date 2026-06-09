@@ -7,6 +7,7 @@ const empty = {
   fullName: "",
   fatherName: "",
   cnic: "",
+  email: "",
   mobile: "",
   dob: "",
   gender: "",
@@ -124,6 +125,15 @@ export default function DriverFormModal({
               <Input
                 value={form.fullName}
                 onChange={(v) => update("fullName", v)}
+              />
+            </div>
+
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(v) => update("email", v)}
               />
             </div>
 

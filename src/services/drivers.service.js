@@ -108,10 +108,92 @@ const HISTORY = [
 
 // small async delay for skeletons
 const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
+const DRIVERS_COLLECTION = "users";
+
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  appUpdate: false,
+  damageDetection: true,
+  inspectionCompleteAlert: false,
+  sound: true,
+  vanAssign: true,
+  vibrate: true,
+};
+
+function formatFirebaseDate(value) {
+  if (!value) return "-";
+
+  const date =
+    typeof value.toDate === "function"
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : null;
+
+  if (!date) return String(value);
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function generateDriverId() {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `DRV-${suffix}`;
+}
+
+function isDriverUser(user) {
+  return String(user?.role || "").toLowerCase() === "driver";
+}
+
+function mapUserToDriver(user) {
+  return {
+    ...user,
+    id: user.id,
+    name: user.displayName || user.name || "-",
+    fullName: user.displayName || user.name || "",
+    mobile: user.phoneNumber || user.mobile || "",
+    status: user.status || "Active",
+    email: user.email || "",
+    totalInspections: user.totalInspections ?? 0,
+    lastActive: formatFirebaseDate(user.lastLoginAt),
+    lastActiveDate: formatFirebaseDate(user.lastLoginAt),
+    joinDate: formatFirebaseDate(user.createdAt),
+    driverId: user.driverId || "",
+    fatherName: user.fatherName || "",
+    cnic: user.cnic || "",
+    dob: user.dob || "",
+    gender: user.gender || "",
+  };
+}
+
+function mapDriverPayloadToUser(payload) {
+  return {
+    displayName: payload.fullName || payload.name || "New Driver",
+    email: payload.email || "",
+    phoneNumber: payload.mobile || payload.phoneNumber || "",
+    role: "Driver",
+    status: payload.status || "Active",
+    driverId: payload.driverId || generateDriverId(),
+    fatherName: payload.fatherName || "",
+    cnic: payload.cnic || "",
+    dob: payload.dob || "",
+    gender: payload.gender || "",
+    notificationSettings: {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(payload.notificationSettings || {}),
+    },
+    seededDemo: Boolean(payload.seededDemo),
+  };
+}
 
 export async function getDrivers() {
   if (isFirebaseConfigured) {
-    const drivers = await getCollection("drivers");
+    const users = await getCollection(DRIVERS_COLLECTION);
+    const drivers = users.filter(isDriverUser).map(mapUserToDriver);
     return drivers.length ? drivers : DRIVERS;
   }
 
@@ -121,8 +203,8 @@ export async function getDrivers() {
 
 export async function getDriverById(id) {
   if (isFirebaseConfigured) {
-    const driver = await getDocument("drivers", id);
-    if (driver) return driver;
+    const user = await getDocument(DRIVERS_COLLECTION, id);
+    if (user && isDriverUser(user)) return mapUserToDriver(user);
   }
 
   await delay(250);
@@ -155,25 +237,15 @@ export async function getDriverInspectionHistory() {
 
 export async function upsertDriver(payload) {
   if (isFirebaseConfigured) {
-    const data = {
-      name: payload.fullName || payload.name || "New Driver",
-      mobile: payload.mobile || "",
-      status: payload.status || "Active",
-      fatherName: payload.fatherName || "",
-      cnic: payload.cnic || "",
-      dob: payload.dob || "",
-      gender: payload.gender || "",
-      email: payload.email || "",
-      joinDate: payload.joinDate || "",
-      totalInspections: payload.totalInspections ?? 0,
-      lastActive: payload.lastActive || "-",
-    };
+    const data = mapDriverPayloadToUser(payload);
 
     if (payload?.id) {
-      return setDocument("drivers", payload.id, data);
+      const savedUser = await setDocument(DRIVERS_COLLECTION, payload.id, data);
+      return mapUserToDriver(savedUser);
     }
 
-    return createDocument("drivers", data);
+    const savedUser = await createDocument(DRIVERS_COLLECTION, data);
+    return mapUserToDriver(savedUser);
   }
 
   await delay(350);
@@ -215,7 +287,8 @@ export async function upsertDriver(payload) {
 
 export async function setDriverStatus(id, status) {
   if (isFirebaseConfigured) {
-    return setDocument("drivers", id, { status });
+    const user = await setDocument(DRIVERS_COLLECTION, id, { status });
+    return mapUserToDriver(user);
   }
 
   await delay(250);
@@ -227,11 +300,14 @@ export async function setDriverStatus(id, status) {
 
 export async function toggleDriverStatus(id) {
   if (isFirebaseConfigured) {
-    const driver = await getDocument("drivers", id);
-    if (!driver) return null;
-    const current = String(driver.status || "Active").toLowerCase();
+    const user = await getDocument(DRIVERS_COLLECTION, id);
+    if (!user || !isDriverUser(user)) return null;
+    const current = String(user.status || "Active").toLowerCase();
     const next = current === "active" ? "Inactive" : "Active";
-    return setDocument("drivers", id, { status: next });
+    const savedUser = await setDocument(DRIVERS_COLLECTION, id, {
+      status: next,
+    });
+    return mapUserToDriver(savedUser);
   }
 
   await delay(250);
@@ -276,6 +352,5 @@ export async function getDriverCurrentAssignment() {
 }
 
 export async function updateDriver(id, payload) {
-  await delay(350);
   return upsertDriver({ ...payload, id });
 }

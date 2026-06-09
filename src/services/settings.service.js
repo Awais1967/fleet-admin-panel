@@ -1,10 +1,32 @@
 import {
-  createDocument,
+  createPlainDocument,
   getCollection,
   getDocument,
+  setPlainDocument,
   setDocument,
 } from "../firebase/firestore";
 import { isFirebaseConfigured } from "../firebase/client";
+
+const ADMINS_COLLECTION = "admins";
+
+function normalizeAdmin(admin) {
+  return {
+    id: admin.id,
+    name: admin.Name || admin.name || "",
+    email: admin.Email || admin.email || "",
+    role: admin.Role || admin.role || "Admin",
+    status: admin.status || admin.Status || "Active",
+  };
+}
+
+function mapAdminPayload(payload) {
+  return {
+    Name: payload.name || payload.Name || "",
+    Email: payload.email || payload.Email || "",
+    Role: payload.role || payload.Role || "Admin",
+    status: payload.status || "Active",
+  };
+}
 
 export async function getRetention() {
   if (isFirebaseConfigured) {
@@ -25,8 +47,8 @@ export async function saveRetention(payload) {
 
 export async function getAdmins() {
   if (isFirebaseConfigured) {
-    const admins = await getCollection("admins");
-    return admins.length ? admins : [];
+    const admins = await getCollection(ADMINS_COLLECTION);
+    return admins.map(normalizeAdmin);
   }
 
   return [];
@@ -34,7 +56,11 @@ export async function getAdmins() {
 
 export async function addAdmin(payload) {
   if (isFirebaseConfigured) {
-    return createDocument("admins", payload);
+    const admin = await createPlainDocument(
+      ADMINS_COLLECTION,
+      mapAdminPayload(payload),
+    );
+    return normalizeAdmin(admin);
   }
 
   return { ok: true, payload };
@@ -42,7 +68,8 @@ export async function addAdmin(payload) {
 
 export async function setAdminStatus(id, status) {
   if (isFirebaseConfigured) {
-    return setDocument("admins", id, { status });
+    const admin = await setPlainDocument(ADMINS_COLLECTION, id, { status });
+    return normalizeAdmin(admin);
   }
 
   return { ok: true, id, status };

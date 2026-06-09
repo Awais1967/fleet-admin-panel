@@ -39,6 +39,28 @@ export async function createDocument(collectionName, payload) {
   return getDocument(collectionName, ref.id);
 }
 
+export async function createDocumentWithId(collectionName, id, payload) {
+  requireFirestore();
+  await setDoc(doc(db, collectionName, String(id)), {
+    ...payload,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return getDocument(collectionName, id);
+}
+
+export async function createPlainDocument(collectionName, payload) {
+  requireFirestore();
+  const ref = await addDoc(collection(db, collectionName), payload);
+  return getDocument(collectionName, ref.id);
+}
+
+export async function setPlainDocument(collectionName, id, payload) {
+  requireFirestore();
+  await setDoc(doc(db, collectionName, String(id)), payload, { merge: true });
+  return getDocument(collectionName, id);
+}
+
 export async function setDocument(collectionName, id, payload) {
   requireFirestore();
   await setDoc(

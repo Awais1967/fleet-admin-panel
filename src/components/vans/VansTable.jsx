@@ -3,17 +3,16 @@ import { FiPlus, FiSearch, FiSliders } from "react-icons/fi";
 import VansFiltersPopover from "./VansFiltersPopover";
 import VanFormModal from "./VanFormModal";
 import Pagination from "../shared/Pagination";
+import ErrorState from "../shared/ErrorState";
+import * as vansService from "../../services/vans.service";
 
-const MOCK = Array.from({ length: 60 }).map((_, i) => ({
-  id: `van_${i + 1}`,
-  vanNumber: `Van-${String((i % 9) + 1).padStart(2, "0")}`,
-  vin: `4Y1SL${String(65848 + i)}Z`,
-  plateNumber: `ABC-${100 + (i % 900)}`,
-  model: "Toyota Hiace",
-  assignedDriver:
-    i % 3 === 0 ? "Ahmed Ali" : i % 3 === 1 ? "John Doe" : "Rehman",
-  status: "active",
-}));
+function getVansErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to the vehicles collection. Update Firestore rules to allow this admin account to read and write vehicles.";
+  }
+
+  return error?.message || "Unable to load vans.";
+}
 
 export default function VansTable() {
   const [search, setSearch] = useState("");
@@ -26,80 +25,93 @@ export default function VansTable() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
-
-  // skeleton + lazy load
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
-  const [cursor, setCursor] = useState(0);
-  const lazyPageSize = 12;
+  const [error, setError] = useState("");
 
   const filterBtnRef = useRef(null);
-  const sentinelRef = useRef(null);
 
-  useEffect(() => {
-    // initial load (skeleton)
-    const t = setTimeout(() => {
-      setItems(MOCK.slice(0, lazyPageSize));
-      setCursor(lazyPageSize);
+  const load = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const vans = await vansService.getVans();
+      setItems(vans || []);
+    } catch (ex) {
+      setItems([]);
+      setError(getVansErrorMessage(ex));
+    } finally {
       setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
-  }, []);
+    }
+  };
 
   useEffect(() => {
-    if (loading) return;
-    const el = sentinelRef.current;
-    if (!el) return;
+    let cancelled = false;
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        const hit = entries.some((e) => e.isIntersecting);
-        if (!hit) return;
-        setItems((prev) => {
-          if (cursor >= MOCK.length) return prev;
-          const next = MOCK.slice(cursor, cursor + lazyPageSize);
-          return [...prev, ...next];
-        });
-        setCursor((c) => Math.min(MOCK.length, c + lazyPageSize));
-      },
-      { rootMargin: "300px" },
-    );
+    (async () => {
+      setLoading(true);
+      setError("");
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loading, cursor]);
+      try {
+        const vans = await vansService.getVans();
+        if (!cancelled) setItems(vans || []);
+      } catch (ex) {
+        if (!cancelled) {
+          setItems([]);
+          setError(getVansErrorMessage(ex));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    const matchesSearch = (r) => {
+    const matchesSearch = (row) => {
       if (!q) return true;
       return (
-        r.vanNumber.toLowerCase().includes(q) ||
-        r.vin.toLowerCase().includes(q) ||
-        r.plateNumber.toLowerCase().includes(q) ||
-        r.model.toLowerCase().includes(q) ||
-        r.assignedDriver.toLowerCase().includes(q)
+        String(row.vanNumber || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(row.vin || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(row.plateNumber || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(row.model || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(row.assignedDriver || "")
+          .toLowerCase()
+          .includes(q)
       );
     };
 
-    const matchesFilters = (r) => {
-      const a = (s) => (s || "").trim().toLowerCase();
-      const fVan = a(filters.vanNumber);
-      const fVin = a(filters.vin);
-      const fDrv = a(filters.assignedDriver);
-      if (fVan && !r.vanNumber.toLowerCase().includes(fVan)) return false;
-      if (fVin && !r.vin.toLowerCase().includes(fVin)) return false;
-      if (fDrv && !r.assignedDriver.toLowerCase().includes(fDrv)) return false;
+    const matchesFilters = (row) => {
+      const clean = (value) => String(value || "").trim().toLowerCase();
+      const fVan = clean(filters.vanNumber);
+      const fVin = clean(filters.vin);
+      const fDrv = clean(filters.assignedDriver);
+      if (fVan && !clean(row.vanNumber).includes(fVan)) return false;
+      if (fVin && !clean(row.vin).includes(fVin)) return false;
+      if (fDrv && !clean(row.assignedDriver).includes(fDrv)) return false;
       return true;
     };
 
-    return items.filter((r) => matchesSearch(r) && matchesFilters(r));
+    return items.filter((row) => matchesSearch(row) && matchesFilters(row));
   }, [items, search, filters]);
 
-  // pagination
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(() => {
@@ -109,6 +121,7 @@ export default function VansTable() {
       cancelled = true;
     };
   }, [search, filters, items]);
+
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageRows = filtered.slice(
@@ -126,21 +139,26 @@ export default function VansTable() {
     setModalOpen(true);
   };
 
-  const saveVan = (payload) => {
-    if (editRow) {
-      setItems((prev) =>
-        prev.map((v) => (v.id === editRow.id ? { ...v, ...payload } : v)),
-      );
-    } else {
-      const newItem = {
-        id: `van_${Date.now()}`,
-        assignedDriver: "—",
-        status: "active",
+  const saveVan = async (payload) => {
+    try {
+      setError("");
+      const savedVan = await vansService.upsertVan({
         ...payload,
-      };
-      setItems((prev) => [newItem, ...prev]);
+        id: editRow?.id || null,
+      });
+
+      if (editRow) {
+        setItems((prev) =>
+          prev.map((van) => (van.id === editRow.id ? savedVan : van)),
+        );
+      } else {
+        setItems((prev) => [savedVan, ...prev]);
+      }
+      setModalOpen(false);
+      await load();
+    } catch (ex) {
+      setError(getVansErrorMessage(ex));
     }
-    setModalOpen(false);
   };
 
   return (
@@ -159,7 +177,7 @@ export default function VansTable() {
             />
             <button
               ref={filterBtnRef}
-              onClick={() => setFiltersOpen((v) => !v)}
+              onClick={() => setFiltersOpen((value) => !value)}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md border border-teal-600 text-teal-700 hover:bg-teal-50 flex items-center justify-center"
             >
               <FiSliders />
@@ -188,7 +206,8 @@ export default function VansTable() {
       </div>
 
       <div className="px-6 py-5">
-        {/* mobile search */}
+        {error ? <ErrorState message={error} /> : null}
+
         <div className="md:hidden mb-4">
           <div className="relative">
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -200,7 +219,7 @@ export default function VansTable() {
             />
             <button
               ref={filterBtnRef}
-              onClick={() => setFiltersOpen((v) => !v)}
+              onClick={() => setFiltersOpen((value) => !value)}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md border border-teal-600 text-teal-700 hover:bg-teal-50 flex items-center justify-center"
             >
               <FiSliders />
@@ -259,18 +278,22 @@ export default function VansTable() {
                 </div>
               ))}
 
-              {/* sentinel for lazy load */}
-              <div ref={sentinelRef} className="h-8" />
+              {pageRows.length === 0 ? (
+                <div className="px-4 py-10 text-center text-xs text-slate-400">
+                  No vans found.
+                </div>
+              ) : null}
             </div>
           )}
         </div>
+
         {total > pageSize ? (
           <div className="px-6 py-3">
             <Pagination
               page={page}
               totalPages={totalPages}
-              onPrev={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onPrev={() => setPage((value) => Math.max(1, value - 1))}
+              onNext={() => setPage((value) => Math.min(totalPages, value + 1))}
             />
           </div>
         ) : null}

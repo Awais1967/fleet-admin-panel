@@ -5,28 +5,48 @@ import { FiChevronLeft, FiDownload, FiSearch } from "react-icons/fi";
 import InspectionPhotosGrid from "../../components/inspections/InspectionPhotosGrid";
 import AiDamageSummaryPanel from "../../components/inspections/AiDamageSummaryPanel";
 import DriverVanInfoPanel from "../../components/inspections/DriverVanInfoPanel";
+import ErrorState from "../../components/shared/ErrorState";
 import * as inspectionsService from "../../services/inspections.service";
+
+function getInspectionErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to this inspection. Update Firestore rules to allow this admin account to read inspections.";
+  }
+
+  return error?.message || "Unable to load inspection details.";
+}
 
 export default function InspectionDetailsPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [inspection, setInspection] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      setLoading(true);
-      const data = await inspectionsService.getInspectionById(id);
-      if (!mounted) return;
-      setInspection(data);
-      setLoading(false);
+      try {
+        setLoading(true);
+        setError("");
+        const data = await inspectionsService.getInspectionById(id);
+        if (!mounted) return;
+        setInspection(data);
+      } catch (ex) {
+        if (!mounted) return;
+        setInspection(null);
+        setError(getInspectionErrorMessage(ex));
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
     return () => (mounted = false);
   }, [id]);
 
   return (
     <div className="space-y-6">
+      {error ? <ErrorState message={error} /> : null}
+
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
           <button

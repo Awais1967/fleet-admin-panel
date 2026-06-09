@@ -1,48 +1,69 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DriversTable from "../../components/drivers/DriversTable";
 import DriverFormModal from "../../components/drivers/DriverFormModal";
+import ErrorState from "../../components/shared/ErrorState";
 import * as driversService from "../../services/drivers.service";
-import { useNavigate } from "react-router-dom";
+
+function getDriverErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to the users collection. Update Firestore rules to allow this admin account to read and write driver users.";
+  }
+
+  return error?.message || "Unable to load drivers.";
+}
 
 export default function DriversPage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
+  const [error, setError] = useState("");
   const nav = useNavigate();
 
-  // modal
   const [formOpen, setFormOpen] = useState(false);
-  const [formMode, setFormMode] = useState("add"); // add | edit
+  const [formMode, setFormMode] = useState("add");
   const [formInitial, setFormInitial] = useState(null);
   const [editingDriverId, setEditingDriverId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const d = await driversService.getDrivers();
-    setRows(
-      (d || []).map((x) => ({
-        id: x.id,
-        name: x.name,
-        mobile: x.mobile || "—",
-        totalInspections: x.totalInspections ?? "—",
-        lastActive: x.lastActive || "—",
-        status: x.status || "Inactive",
-        fatherName: x.fatherName || "",
-        cnic: x.cnic || "",
-        dob: x.dob || "",
-        gender: x.gender || "",
-      })),
-    );
-    setLoading(false);
+    setError("");
+
+    try {
+      const drivers = await driversService.getDrivers();
+      setRows(
+        (drivers || []).map((driver) => ({
+          id: driver.id,
+          name: driver.name,
+          email: driver.email || "",
+          mobile: driver.mobile || "-",
+          totalInspections: driver.totalInspections ?? "-",
+          lastActive: driver.lastActive || "-",
+          status: driver.status || "Inactive",
+          fatherName: driver.fatherName || "",
+          cnic: driver.cnic || "",
+          dob: driver.dob || "",
+          gender: driver.gender || "",
+        })),
+      );
+    } catch (ex) {
+      setRows([]);
+      setError(getDriverErrorMessage(ex));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     let mounted = true;
+
     (async () => {
-      if (!mounted) return;
-      await load();
+      if (mounted) await load();
     })();
-    return () => (mounted = false);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const openAdd = () => {
@@ -51,18 +72,18 @@ export default function DriversPage() {
     setFormOpen(true);
   };
 
-  const openEdit = async (row) => {
+  const openEdit = (row) => {
     setFormMode("edit");
     setEditingDriverId(row.id);
-    // Use the row data directly from the table instead of refetching
-    // This ensures we get the latest data including any recent updates
     setFormInitial({
       fullName: row.name || "",
+      email: row.email || "",
       fatherName: row.fatherName || "",
       cnic: row.cnic || "",
       mobile: row.mobile || "",
       dob: row.dob || "",
       gender: row.gender || "",
+      status: row.status || "Active",
     });
     setFormOpen(true);
   };
@@ -70,6 +91,7 @@ export default function DriversPage() {
   const onSave = async (payload) => {
     try {
       setSaving(true);
+      setError("");
       await driversService.upsertDriver({
         ...payload,
         id: formMode === "edit" ? editingDriverId : null,
@@ -77,6 +99,8 @@ export default function DriversPage() {
       setFormOpen(false);
       setEditingDriverId(null);
       await load();
+    } catch (ex) {
+      setError(getDriverErrorMessage(ex));
     } finally {
       setSaving(false);
     }
@@ -84,12 +108,14 @@ export default function DriversPage() {
 
   return (
     <div className="space-y-6">
+      {error ? <ErrorState message={error} /> : null}
+
       <DriversTable
         loading={loading}
         rows={rows}
-        onViewDetail={(r) => nav(`/drivers/${r.id}`)}
+        onViewDetail={(row) => nav(`/drivers/${row.id}`)}
         onAddNew={openAdd}
-        onEdit={(r) => openEdit(r)}
+        onEdit={openEdit}
       />
 
       <DriverFormModal

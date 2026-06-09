@@ -4,7 +4,7 @@ import { FiX } from "react-icons/fi";
 export default function AdminUserModal({ open, onClose, onSave }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("Super Admin");
+  const [role, setRole] = useState("Admin");
 
   if (!open) return null;
 
@@ -21,7 +21,7 @@ export default function AdminUserModal({ open, onClose, onSave }) {
     });
     setName("");
     setEmail("");
-    setRole("Super Admin");
+    setRole("Admin");
     onClose?.();
   };
 
@@ -64,9 +64,7 @@ export default function AdminUserModal({ open, onClose, onSave }) {
                 onChange={(e) => setRole(e.target.value)}
                 className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-teal-600 bg-white"
               >
-                <option>Super Admin</option>
                 <option>Admin</option>
-                <option>Manager</option>
               </select>
             </Field>
           </div>

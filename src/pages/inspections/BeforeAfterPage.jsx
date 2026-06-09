@@ -3,7 +3,16 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { FiChevronLeft, FiDownload, FiSearch, FiSliders } from "react-icons/fi";
 import BeforeAfterCompare from "../../components/inspections/BeforeAfterCompare";
+import ErrorState from "../../components/shared/ErrorState";
 import * as inspectionsService from "../../services/inspections.service";
+
+function getBeforeAfterErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to this inspection. Update Firestore rules to allow this admin account to read inspections.";
+  }
+
+  return error?.message || "Unable to load inspection images.";
+}
 
 export default function BeforeAfterPage() {
   const { id } = useParams();
@@ -12,6 +21,7 @@ export default function BeforeAfterPage() {
 
   const [loading, setLoading] = useState(true);
   const [pair, setPair] = useState(null);
+  const [error, setError] = useState("");
 
   // (optional) keep issue from query/state (won't render UI block unless you want)
   const [selectedIssue, setSelectedIssue] = useState(null);
@@ -21,9 +31,14 @@ export default function BeforeAfterPage() {
     (async () => {
       try {
         setLoading(true);
+        setError("");
         const data = await inspectionsService.getBeforeAfterByInspectionId(id);
         if (!mounted) return;
         setPair(data);
+      } catch (ex) {
+        if (!mounted) return;
+        setPair(null);
+        setError(getBeforeAfterErrorMessage(ex));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -90,6 +105,8 @@ export default function BeforeAfterPage() {
 
       {/* Body */}
       <div className="p-6">
+        {error ? <ErrorState message={error} /> : null}
+
         <BeforeAfterCompare
           loading={loading}
           before={pair?.before}

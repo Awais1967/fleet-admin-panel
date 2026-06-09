@@ -126,6 +126,7 @@ export default function DriverDetailsPage() {
         mode="edit"
         initialValues={{
           fullName: driver?.name || "",
+          email: driver?.email || "",
           fatherName: driver?.fatherName || "",
           cnic: driver?.cnic || "",
           mobile: driver?.mobile || "",
