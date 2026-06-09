@@ -22,6 +22,17 @@ export default function BulkAssignmentCard({
     return m;
   }, [drivers]);
 
+  const vanMap = useMemo(() => {
+    const m = new Map();
+    vans.forEach((v) => m.set(v.id, v));
+    return m;
+  }, [vans]);
+
+  const selectedVanIds = useMemo(
+    () => new Set(rows.map((r) => r.vanId).filter(Boolean)),
+    [rows],
+  );
+
   const handleVanChange = (driverId, vanId) => {
     setRows((prev) =>
       prev.map((r) => (r.driverId === driverId ? { ...r, vanId } : r)),
@@ -33,19 +44,34 @@ export default function BulkAssignmentCard({
       ? { text: "Ready", cls: "text-teal-700" }
       : { text: "No van selected", cls: "text-rose-600" };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const assigned = rows.filter((r) => r.vanId).length;
     const skipped = rows.filter((r) => !r.vanId).length;
+    const payloadRows = rows.map((r) => {
+      const driver = driverMap.get(r.driverId);
+      const van = vanMap.get(r.vanId);
+      return {
+        ...r,
+        driverName: driver?.name || "",
+        vanLabel: van?.label || "",
+        status: Boolean(r.vanId),
+      };
+    });
 
-    const lines = [
-      `${assigned} drivers assigned`,
-      "SMS notifications sent",
-      `${skipped} driver skipped due to missing data`,
-    ];
+    try {
+      await onConfirm?.(payloadRows);
 
-    setAlertLines(lines);
-    setAlertOpen(true);
-    onConfirm?.(rows);
+      const lines = [
+        `${assigned} drivers assigned`,
+        "SMS notifications sent",
+        `${skipped} driver skipped due to missing data`,
+      ];
+
+      setAlertLines(lines);
+      setAlertOpen(true);
+    } catch {
+      // The parent page renders the Firebase error alert.
+    }
   };
 
   return (
@@ -82,7 +108,13 @@ export default function BulkAssignmentCard({
                     >
                       <option value="">Select Van</option>
                       {vans.map((v) => (
-                        <option key={v.id} value={v.id}>
+                        <option
+                          key={v.id}
+                          value={v.id}
+                          disabled={
+                            selectedVanIds.has(v.id) && r.vanId !== v.id
+                          }
+                        >
                           {v.label}
                         </option>
                       ))}
