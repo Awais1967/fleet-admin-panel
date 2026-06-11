@@ -1,11 +1,14 @@
 // src/services/drivers.service.js
 import {
-  createDocument,
+  createDocumentWithId,
   getCollection,
   getDocument,
   setDocument,
 } from "../firebase/firestore";
 import { isFirebaseConfigured } from "../firebase/client";
+import { createUserWithEmailAndPassword, getAuth, updateProfile } from "firebase/auth";
+import { deleteApp, initializeApp } from "firebase/app";
+import { firebaseConfig } from "../firebase/config";
 
 // ✅ Demo data (match UI screenshots)
 const DRIVERS = [
@@ -140,19 +143,31 @@ function formatFirebaseDate(value) {
   }).format(date);
 }
 
-function generateDriverId() {
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `DRV-${suffix}`;
-}
-
 function isDriverUser(user) {
   return String(user?.role || "").toLowerCase() === "driver";
 }
 
+function isCustomDriverId(value) {
+  return /^DRV-[A-Z0-9]{6}$/.test(String(value || ""));
+}
+
+function resolveDriverUid(user) {
+  if (user?.uid) return user.uid;
+  if (user?.driverId && !isCustomDriverId(user.driverId)) return user.driverId;
+  return user?.id || "";
+}
+
+function resolvePublicDriverId(user) {
+  return isCustomDriverId(user?.driverId) ? user.driverId : "";
+}
+
 function mapUserToDriver(user) {
+  const uid = resolveDriverUid(user);
+
   return {
     ...user,
     id: user.id,
+    uid,
     name: user.displayName || user.name || "-",
     fullName: user.displayName || user.name || "",
     mobile: user.phoneNumber || user.mobile || "",
@@ -162,7 +177,7 @@ function mapUserToDriver(user) {
     lastActive: formatFirebaseDate(user.lastLoginAt),
     lastActiveDate: formatFirebaseDate(user.lastLoginAt),
     joinDate: formatFirebaseDate(user.createdAt),
-    driverId: user.driverId || "",
+    driverId: resolvePublicDriverId(user),
     fatherName: user.fatherName || "",
     cnic: user.cnic || "",
     dob: user.dob || "",
@@ -171,23 +186,87 @@ function mapUserToDriver(user) {
 }
 
 function mapDriverPayloadToUser(payload) {
-  return {
+  const user = {
+    uid: payload.uid || payload.id || "",
     displayName: payload.fullName || payload.name || "New Driver",
     email: payload.email || "",
     phoneNumber: payload.mobile || payload.phoneNumber || "",
     role: "Driver",
     status: payload.status || "Active",
-    driverId: payload.driverId || generateDriverId(),
     fatherName: payload.fatherName || "",
     cnic: payload.cnic || "",
     dob: payload.dob || "",
     gender: payload.gender || "",
-    notificationSettings: {
+  };
+
+  if (payload.driverId) {
+    user.driverId = payload.driverId;
+  }
+
+  if (!payload.id) {
+    user.driverId = payload.driverId || "";
+    user.fcmToken = payload.fcmToken || "";
+    user.lastLoginAt = payload.lastLoginAt ?? null;
+    user.notificationSettings = {
       ...DEFAULT_NOTIFICATION_SETTINGS,
       ...(payload.notificationSettings || {}),
-    },
-    seededDemo: Boolean(payload.seededDemo),
-  };
+    };
+    user.seededDemo = Boolean(payload.seededDemo);
+  }
+
+  return user;
+}
+
+function generateDriverId() {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `DRV-${suffix}`;
+}
+
+async function generateUniqueDriverId(existingUsers = null) {
+  const users = existingUsers || await getCollection(DRIVERS_COLLECTION);
+  const existingIds = new Set(
+    users.map((user) => user.driverId).filter(isCustomDriverId),
+  );
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const driverId = generateDriverId();
+    if (!existingIds.has(driverId)) return driverId;
+  }
+
+  throw new Error("Unable to generate a unique driver ID. Please try again.");
+}
+
+async function createDriverAuthUser(payload) {
+  const email = String(payload.email || "").trim();
+  const password = String(payload.password || "");
+
+  if (!email || !password) {
+    throw new Error("Email and password are required to create a Firebase Authentication user.");
+  }
+
+  const secondaryApp = initializeApp(
+    firebaseConfig,
+    `driver-create-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+
+  try {
+    const secondaryAuth = getAuth(secondaryApp);
+    const credential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      email,
+      password,
+    );
+
+    if (payload.fullName || payload.name) {
+      await updateProfile(credential.user, {
+        displayName: payload.fullName || payload.name,
+      });
+    }
+
+    return credential.user.uid;
+  } finally {
+    await deleteApp(secondaryApp);
+  }
 }
 
 export async function getDrivers() {
@@ -237,14 +316,23 @@ export async function getDriverInspectionHistory() {
 
 export async function upsertDriver(payload) {
   if (isFirebaseConfigured) {
-    const data = mapDriverPayloadToUser(payload);
-
     if (payload?.id) {
+      const data = mapDriverPayloadToUser(payload);
       const savedUser = await setDocument(DRIVERS_COLLECTION, payload.id, data);
       return mapUserToDriver(savedUser);
     }
 
-    const savedUser = await createDocument(DRIVERS_COLLECTION, data);
+    const uid = await createDriverAuthUser(payload);
+    const users = await getCollection(DRIVERS_COLLECTION);
+    const driverId = await generateUniqueDriverId(users);
+    const data = mapDriverPayloadToUser({
+      ...payload,
+      uid,
+      driverId,
+      status: payload.status || "Active",
+      seededDemo: false,
+    });
+    const savedUser = await createDocumentWithId(DRIVERS_COLLECTION, uid, data);
     return mapUserToDriver(savedUser);
   }
 
@@ -271,8 +359,10 @@ export async function upsertDriver(payload) {
   const newItem = {
     id: String(Date.now()),
     name: payload.fullName || "New Driver",
+    email: payload.email || "",
     status: payload.status || "Active",
     mobile: payload.mobile || "+92 300 0000000",
+    password: payload.password || "",
     fatherName: payload.fatherName || "",
     cnic: payload.cnic || "",
     dob: payload.dob || "",
@@ -337,11 +427,6 @@ export async function getDriverStats() {
 }
 
 export async function getDriverCurrentAssignment() {
-  if (isFirebaseConfigured) {
-    const assignments = await getCollection("assignments");
-    if (assignments.length) return assignments[0];
-  }
-
   await delay(250);
   return {
     van: "Van-19",

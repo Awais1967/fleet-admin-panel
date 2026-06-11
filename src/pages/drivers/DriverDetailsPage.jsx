@@ -6,9 +6,18 @@ import DriverActivitySummary from "../../components/drivers/DriverActivitySummar
 import DriverCurrentAssignment from "../../components/drivers/DriverCurrentAssignment";
 import DriverInspectionHistoryTable from "../../components/drivers/DriverInspectionHistoryTable";
 import DriverFormModal from "../../components/drivers/DriverFormModal";
+import ErrorState from "../../components/shared/ErrorState";
 import * as driversService from "../../services/drivers.service";
 
 const PRIMARY = "#0A8F86";
+
+function getDriverDetailsErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Firebase rejected access to driver details. Update Firestore rules to allow this admin account to read users, settings, assignments, and driver inspection history.";
+  }
+
+  return error?.message || "Unable to load driver details.";
+}
 
 export default function DriverDetailsPage() {
   const { id } = useParams();
@@ -16,6 +25,7 @@ export default function DriverDetailsPage() {
 
   const [loading, setLoading] = useState(true);
   const [driver, setDriver] = useState(null);
+  const [error, setError] = useState("");
 
   // tabs
   const [tab, setTab] = useState("summary"); // summary | assignment | history
@@ -38,15 +48,26 @@ export default function DriverDetailsPage() {
     let mounted = true;
     (async () => {
       setLoading(true);
-      const d = await driversService.getDriverById(id);
-      const s = await driversService.getDriverStats(id);
-      const a = await driversService.getDriverCurrentAssignment(id);
-      if (!mounted) return;
+      setError("");
 
-      setDriver(d);
-      setStats(s);
-      setAssignment(a);
-      setLoading(false);
+      try {
+        const d = await driversService.getDriverById(id);
+        const s = await driversService.getDriverStats(id);
+        const a = await driversService.getDriverCurrentAssignment(id);
+        if (!mounted) return;
+
+        setDriver(d);
+        setStats(s);
+        setAssignment(a);
+      } catch (ex) {
+        if (!mounted) return;
+        setDriver(null);
+        setStats(null);
+        setAssignment(null);
+        setError(getDriverDetailsErrorMessage(ex));
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
     return () => (mounted = false);
   }, [id]);
@@ -59,23 +80,39 @@ export default function DriverDetailsPage() {
       if (historyRows.length) return;
 
       setHistoryLoading(true);
-      const rows = await driversService.getDriverInspectionHistory(id);
-      if (!mounted) return;
+      setError("");
 
-      setHistoryRows(rows || []);
-      setHistoryLoading(false);
+      try {
+        const rows = await driversService.getDriverInspectionHistory(id);
+        if (!mounted) return;
+
+        setHistoryRows(rows || []);
+      } catch (ex) {
+        if (!mounted) return;
+        setHistoryRows([]);
+        setError(getDriverDetailsErrorMessage(ex));
+      } finally {
+        if (mounted) setHistoryLoading(false);
+      }
     })();
     return () => (mounted = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, id]);
 
   const onDisableToggle = async () => {
-    const next = await driversService.toggleDriverStatus(id);
-    setDriver((p) => ({ ...(p || {}), status: next?.status }));
+    try {
+      setError("");
+      const next = await driversService.toggleDriverStatus(id);
+      setDriver((p) => ({ ...(p || {}), status: next?.status }));
+    } catch (ex) {
+      setError(getDriverDetailsErrorMessage(ex));
+    }
   };
 
   return (
     <div className="space-y-6">
+      {error ? <ErrorState message={error} /> : null}
+
       {/* ONE main card like screenshot */}
       <div className="rounded-[10px] bg-white border border-slate-100 shadow-sm overflow-hidden">
         <DriverDetailsHeader
@@ -135,10 +172,15 @@ export default function DriverDetailsPage() {
         }}
         onClose={() => setEditOpen(false)}
         onSave={async (form) => {
-          await driversService.updateDriver(id, form);
-          const d = await driversService.getDriverById(id);
-          setDriver(d);
-          setEditOpen(false);
+          try {
+            setError("");
+            await driversService.updateDriver(id, form);
+            const d = await driversService.getDriverById(id);
+            setDriver(d);
+            setEditOpen(false);
+          } catch (ex) {
+            setError(getDriverDetailsErrorMessage(ex));
+          }
         }}
       />
     </div>

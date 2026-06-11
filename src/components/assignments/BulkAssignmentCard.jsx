@@ -39,19 +39,22 @@ export default function BulkAssignmentCard({
     );
   };
 
+  const driverLabel = (driver) => driver?.name || "Unnamed Driver";
+
   const statusOf = (r) =>
     r.vanId
       ? { text: "Ready", cls: "text-teal-700" }
       : { text: "No van selected", cls: "text-rose-600" };
 
   const handleConfirm = async () => {
-    const assigned = rows.filter((r) => r.vanId).length;
     const skipped = rows.filter((r) => !r.vanId).length;
     const payloadRows = rows.map((r) => {
       const driver = driverMap.get(r.driverId);
       const van = vanMap.get(r.vanId);
       return {
         ...r,
+        driverUid: driver?.uid || r.driverId,
+        driverId: driver?.driverId || "",
         driverName: driver?.name || "",
         vanLabel: van?.label || "",
         status: Boolean(r.vanId),
@@ -59,12 +62,15 @@ export default function BulkAssignmentCard({
     });
 
     try {
-      await onConfirm?.(payloadRows);
+      const result = await onConfirm?.(payloadRows);
+      const saved = result?.rows?.length ?? 0;
+      const notificationsSent = result?.notificationsSent ?? 0;
+      const skippedAfterSave = rows.length - saved;
 
       const lines = [
-        `${assigned} drivers assigned`,
-        "SMS notifications sent",
-        `${skipped} driver skipped due to missing data`,
+        `${saved} drivers assigned`,
+        `${notificationsSent} driver notifications sent`,
+        `${skippedAfterSave || skipped} driver skipped due to missing data`,
       ];
 
       setAlertLines(lines);
@@ -96,7 +102,9 @@ export default function BulkAssignmentCard({
               const st = statusOf(r);
               return (
                 <div key={r.driverId} className="grid grid-cols-3 items-center">
-                  <div className="text-xs text-slate-700">{d?.name || "—"}</div>
+                  <div className="text-xs text-slate-700">
+                    {driverLabel(d) || "—"}
+                  </div>
 
                   <div>
                     <select

@@ -20,6 +20,8 @@ export default function DailyAssignmentCard({
     onAssign?.({ date, driverId, vanId, autoSms });
   };
 
+  const driverLabel = (driver) => driver.name || "Unnamed Driver";
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -60,7 +62,7 @@ export default function DailyAssignmentCard({
               <option value="">Select Driver</option>
               {driverOptions.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name}
+                  {driverLabel(d)}
                 </option>
               ))}
             </select>

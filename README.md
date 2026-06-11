@@ -17,10 +17,23 @@ VITE_FIREBASE_APP_ID=
 
 Enable Email/Password sign-in in Firebase Authentication for admin login. Firestore is read through the existing service layer and uses these collections/documents:
 
-- `drivers`, `vans`, `inspections`, `assignments`, `notifications`, `admins`
+- `users`, `vehicles`, `vans`, `inspections`, `assignments`, `notifications`, `admins`
 - `overview/kpis`, `analytics/kpis`
 - `settings/retention`, `settings/system`
 - `todaysInspections`, `damageAlerts`, `driverInspectionHistory`, `inspectionBeforeAfter`
+
+Deploy the included Firestore rules with Firebase CLI:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+The rules allow access only to signed-in admins. Create one admin document before using the panel:
+
+- Collection: `admins`
+- Document ID: the Firebase Auth user's UID, or their exact email address
+- Fields: `Name`, `Email`, `Role`, `status`
+- Required status value: `Active`
 
 If Firebase is not configured or a collection is empty, the app falls back to the existing demo data so local development still works.
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FiX, FiChevronDown } from "react-icons/fi";
+import { FiX, FiChevronDown, FiEye, FiEyeOff } from "react-icons/fi";
 
 const PRIMARY = "#0A8F86";
 
@@ -8,6 +8,7 @@ const empty = {
   fatherName: "",
   cnic: "",
   email: "",
+  password: "",
   mobile: "",
   dob: "",
   gender: "",
@@ -82,12 +83,16 @@ export default function DriverFormModal({
   );
 
   const [form, setForm] = useState(init);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     Promise.resolve().then(() => {
-      if (!cancelled) setForm(init);
+      if (!cancelled) {
+        setForm(init);
+        setShowPassword(false);
+      }
     });
     return () => {
       cancelled = true;
@@ -136,6 +141,29 @@ export default function DriverFormModal({
                 onChange={(v) => update("email", v)}
               />
             </div>
+
+            {mode === "add" ? (
+              <div>
+                <Label>Password</Label>
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(v) => update("password", v)}
+                  rightIcon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="flex h-5 w-5 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showPassword ? <FiEyeOff /> : <FiEye />}
+                    </button>
+                  }
+                />
+              </div>
+            ) : null}
 
             <div>
               <Label>Father Name</Label>
