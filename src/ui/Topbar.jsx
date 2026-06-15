@@ -3,35 +3,19 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import { FiBell, FiChevronDown, FiMenu } from "react-icons/fi";
 import { Link } from "react-router-dom";
 import Avatar from "../components/shared/Avatar";
+import { useAuth } from "../context/AuthContext";
+import * as notificationsService from "../services/notifications.service";
 
 const PRIMARY = "#0A8F86";
 
 export default function Topbar({ title = "", onOpenMobileNav }) {
+  const { user } = useAuth();
   const [langOpen, setLangOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "New inspection assigned",
-      body: "Inspection #241 was assigned to you.",
-      time: "2h",
-      unread: true,
-    },
-    {
-      id: 2,
-      title: "AI detected damage",
-      body: "2 new damage points detected on Van 42.",
-      time: "1d",
-      unread: true,
-    },
-    {
-      id: 3,
-      title: "Monthly report ready",
-      body: "Your fleet report for January is ready.",
-      time: "3d",
-      unread: false,
-    },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [readNotificationIds, setReadNotificationIds] = useState(
+    notificationsService.getStoredReadNotificationIds,
+  );
   const notifRef = useRef(null);
   const lang = useMemo(() => "English", []);
 
@@ -45,10 +29,52 @@ export default function Topbar({ title = "", onOpenMobileNav }) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const unreadCount = notifications.filter((n) => n.unread).length;
+  useEffect(() => {
+    return notificationsService.subscribeDamageDetectedNotifications(
+      (items) => setNotifications(items),
+      () => setNotifications([]),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    return notificationsService.subscribeReadNotificationIds(
+      user.id,
+      (ids) => {
+        const next = new Set(ids);
+        setReadNotificationIds(next);
+      },
+      () => {},
+    );
+  }, [user?.id]);
+
+  const displayNotifications = useMemo(
+    () =>
+      notifications.map((notification) => ({
+        ...notification,
+        unread: !readNotificationIds.has(notification.id),
+      })),
+    [notifications, readNotificationIds],
+  );
+
+  const unreadCount = displayNotifications.filter((n) => n.unread).length;
+
+  function markRead(notificationIds) {
+    const ids = notificationIds.filter(Boolean);
+    if (!ids.length) return;
+
+    setReadNotificationIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+
+    notificationsService.markNotificationsRead(user?.id, ids).catch(() => {});
+  }
 
   function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    markRead(notifications.map((n) => n.id));
   }
 
   return (
@@ -132,11 +158,14 @@ export default function Topbar({ title = "", onOpenMobileNav }) {
               </div>
 
               <div className="overflow-y-auto max-h-72">
-                {notifications.map((n) => (
+                {displayNotifications.map((n) => (
                   <Link
-                    to="/notifications"
+                    to={n.to || "/notifications"}
                     key={n.id}
-                    onClick={() => setNotifOpen(false)}
+                    onClick={() => {
+                      markRead([n.id]);
+                      setNotifOpen(false);
+                    }}
                     className={`block px-4 py-3 text-sm transition border-b`}
                     style={{
                       backgroundColor: n.unread
@@ -160,6 +189,12 @@ export default function Topbar({ title = "", onOpenMobileNav }) {
                     </div>
                   </Link>
                 ))}
+
+                {!displayNotifications.length ? (
+                  <div className="px-4 py-8 text-center text-sm text-slate-500">
+                    No AI damage alerts.
+                  </div>
+                ) : null}
               </div>
 
               <div

@@ -4,7 +4,9 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { FiChevronLeft, FiDownload, FiSearch, FiSliders } from "react-icons/fi";
 import BeforeAfterCompare from "../../components/inspections/BeforeAfterCompare";
 import ErrorState from "../../components/shared/ErrorState";
+import { useAuth } from "../../context/AuthContext";
 import * as inspectionsService from "../../services/inspections.service";
+import * as notificationsService from "../../services/notifications.service";
 
 function getBeforeAfterErrorMessage(error) {
   if (error?.code === "permission-denied") {
@@ -18,6 +20,7 @@ export default function BeforeAfterPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [pair, setPair] = useState(null);
@@ -54,6 +57,14 @@ export default function BeforeAfterPage() {
     const issueFromState = location.state?.issue;
     setSelectedIssue(issueFromState || issueFromQuery || null);
   }, [location.search, location.state]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    notificationsService
+      .markNotificationsRead(user?.id, [`inspection_${id}`])
+      .catch(() => {});
+  }, [id, user?.id]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">

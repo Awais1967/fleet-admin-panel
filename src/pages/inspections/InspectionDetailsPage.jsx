@@ -6,7 +6,9 @@ import InspectionPhotosGrid from "../../components/inspections/InspectionPhotosG
 import AiDamageSummaryPanel from "../../components/inspections/AiDamageSummaryPanel";
 import DriverVanInfoPanel from "../../components/inspections/DriverVanInfoPanel";
 import ErrorState from "../../components/shared/ErrorState";
+import { useAuth } from "../../context/AuthContext";
 import * as inspectionsService from "../../services/inspections.service";
+import * as notificationsService from "../../services/notifications.service";
 
 function getInspectionErrorMessage(error) {
   if (error?.code === "permission-denied") {
@@ -19,6 +21,7 @@ function getInspectionErrorMessage(error) {
 export default function InspectionDetailsPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [inspection, setInspection] = useState(null);
   const [error, setError] = useState("");
@@ -42,6 +45,14 @@ export default function InspectionDetailsPage() {
     })();
     return () => (mounted = false);
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    notificationsService
+      .markNotificationsRead(user?.id, [`inspection_${id}`])
+      .catch(() => {});
+  }, [id, user?.id]);
 
   return (
     <div className="space-y-6">
