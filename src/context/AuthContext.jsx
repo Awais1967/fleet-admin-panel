@@ -32,7 +32,7 @@ function getAuthErrorMessage(error) {
     case "auth/invalid-credential":
     case "auth/user-not-found":
     case "auth/wrong-password":
-      return "Invalid email or password. Create this admin user in Firebase Authentication or use an existing account.";
+      return "Incorrect email or password.";
     case "auth/operation-not-allowed":
       return "Email/password login is not enabled in Firebase Authentication.";
     case "auth/too-many-requests":

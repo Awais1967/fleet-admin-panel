@@ -1,6 +1,6 @@
 // src/ui/Topbar.jsx
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import { FiBell, FiChevronDown, FiMenu } from "react-icons/fi";
+import { FiBell, FiMenu } from "react-icons/fi";
 import { Link } from "react-router-dom";
 import Avatar from "../components/shared/Avatar";
 import { useAuth } from "../context/AuthContext";
@@ -10,14 +10,12 @@ const PRIMARY = "#0A8F86";
 
 export default function Topbar({ title = "", onOpenMobileNav }) {
   const { user } = useAuth();
-  const [langOpen, setLangOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [readNotificationIds, setReadNotificationIds] = useState(
     notificationsService.getStoredReadNotificationIds,
   );
   const notifRef = useRef(null);
-  const lang = useMemo(() => "English", []);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -93,31 +91,6 @@ export default function Topbar({ title = "", onOpenMobileNav }) {
       <div className="text-xl font-semibold text-slate-900">{title}</div>
 
       <div className="ml-auto flex items-center gap-3">
-        {/* language */}
-        <div className="relative">
-          <button
-            onClick={() => setLangOpen((v) => !v)}
-            className="h-10 px-3 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2"
-          >
-            <span>{lang}</span>
-            <FiChevronDown className="text-slate-400" />
-          </button>
-
-          {langOpen ? (
-            <div className="absolute right-0 mt-2 w-40 bg-white border border-app rounded-xl shadow-lg overflow-hidden z-50">
-              {["English", "Deutsch", "Français"].map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLangOpen(false)}
-                  className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50"
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
         {/* bell */}
         <div className="relative" ref={notifRef}>
           <button
