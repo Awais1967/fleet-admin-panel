@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -9,6 +10,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("admin@company.com");
   const [password, setPassword] = useState("admin");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -58,12 +60,22 @@ export default function LoginPage() {
             <div className="text-sm font-medium text-slate-800 mb-2">
               Password
             </div>
-            <input
-              value={password}
-              type="password"
-              onChange={(e) => setPassword(e.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-teal-600"
-            />
+            <div className="relative">
+              <input
+                value={password}
+                type={showPassword ? "text" : "password"}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 pr-10 text-sm outline-none focus:border-teal-600"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-slate-500 hover:text-slate-700"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <FiEyeOff /> : <FiEye />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -71,14 +83,6 @@ export default function LoginPage() {
             className="h-10 w-full rounded-md bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Login"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => nav("/verify")}
-            className="w-full text-sm text-teal-700 hover:underline"
-          >
-            Verify Code (OTP)
           </button>
         </form>
       </div>
