@@ -37,7 +37,7 @@ function mapAssignmentToHistory(assignment) {
     id: assignment.id,
     date: assignment.date || "-",
     driver: assignment.driverName || assignment.driverId || "-",
-    van: assignment.vanLabel || assignment.vanId || "-",
+    van: assignment.displayName || assignment.vanLabel || assignment.vehicleId || assignment.vanId || "-",
     assignedBy: assignment.assignedBy || "Admin",
     time: formatTime(assignment.createdAt),
   };
@@ -50,6 +50,12 @@ function buildAssignmentPayload({
   driverName,
   vanId,
   vanLabel,
+  vehicleId,
+  displayName,
+  imageUrl,
+  model,
+  vin,
+  isDemo,
   assignedBy,
   autoSms,
   type,
@@ -60,8 +66,14 @@ function buildAssignmentPayload({
     driverUid,
     driverId,
     driverName,
-    vanId,
-    vanLabel,
+    vanId: vehicleId || vanId,
+    vanLabel: displayName || vanLabel || "",
+    vehicleId: vehicleId || vanId,
+    displayName: displayName || vanLabel || "",
+    imageUrl: imageUrl || "",
+    model: model || "",
+    vin: vin || "",
+    isDemo: Boolean(isDemo),
     assignedBy: assignedBy || "Admin",
     autoSms: Boolean(autoSms),
     type,
@@ -81,7 +93,7 @@ function buildAssignmentNotificationPayload(assignment) {
     inApp: true,
     status: "Delivered",
     type: "assignment",
-    assignmentId: assignment.id,
+    assignmentId: assignment.id || assignment.vehicleId || assignment.vanId,
     driverUid: assignment.driverUid,
     driverId: assignment.driverId,
     vanId: assignment.vanId,
@@ -129,40 +141,47 @@ async function saveAssignedVehicle(assignment) {
     throw new Error("Driver Firebase UID is missing. Select a valid driver.");
   }
 
-  if (!assignment?.vanId) {
+  const selectedVehicleId = assignment.vehicleId || assignment.vanId;
+
+  if (!selectedVehicleId) {
     throw new Error("Van is missing. Select a valid van.");
   }
 
+  const vehicleId = String(selectedVehicleId);
+  const payload = {
+    assignedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+    date: assignment.date || "",
+    displayName: assignment.displayName || assignment.vanLabel || "",
+    driverId: assignment.driverUid,
+    id: vehicleId,
+    imageUrl: assignment.imageUrl || "",
+    isActive: true,
+    isDemo: Boolean(assignment.isDemo),
+    model: assignment.model || "",
+    photoCaptured: 0,
+    photoRequired: 14,
+    status: "not_started",
+    updatedAt: serverTimestamp(),
+    vehicleId,
+    vin: assignment.vin || "",
+  };
+
   if (!isFirebaseConfigured || !db) {
-    const id = `local_assignment_${Date.now()}`;
-    return {
-      id,
-      assignmentId: id,
-      ...assignment,
-    };
+    return payload;
   }
 
   const assignmentRef = doc(
-    collection(db, "users", assignment.driverUid, "assigned_vehicles"),
+    db,
+    "users",
+    String(assignment.driverUid),
+    "assigned_vehicles",
+    vehicleId,
   );
-  const assignmentPath = `users/${assignment.driverUid}/assigned_vehicles/${assignmentRef.id}`;
+  const assignmentPath = `users/${assignment.driverUid}/assigned_vehicles/${vehicleId}`;
   console.log("Saving assignment to:", assignmentPath);
 
-  await setDoc(assignmentRef, {
-    assignmentId: assignmentRef.id,
-    date: assignment.date,
-    driverUid: assignment.driverUid,
-    driverId: assignment.driverId,
-    driverName: assignment.driverName,
-    vanId: assignment.vanId,
-    vanLabel: assignment.vanLabel,
-    assignedBy: assignment.assignedBy,
-    autoSms: Boolean(assignment.autoSms),
-    type: assignment.type,
-    status: Boolean(assignment.status),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  await setDoc(assignmentRef, payload);
 
   const savedSnap = await getDoc(assignmentRef);
 
@@ -180,6 +199,12 @@ export async function assignDaily({
   driverName,
   vanId,
   vanLabel,
+  vehicleId,
+  displayName,
+  imageUrl,
+  model,
+  vin,
+  isDemo,
   assignedBy,
   autoSms,
 }) {
@@ -190,6 +215,12 @@ export async function assignDaily({
     driverName,
     vanId,
     vanLabel,
+    vehicleId,
+    displayName,
+    imageUrl,
+    model,
+    vin,
+    isDemo,
     assignedBy,
     autoSms,
     type: "daily",
@@ -198,26 +229,26 @@ export async function assignDaily({
 
   if (isFirebaseConfigured) {
     const assignment = await saveAssignedVehicle(payload);
-    const notification = await saveAssignmentNotification(assignment);
+    const notification = await saveAssignmentNotification(payload);
 
     return {
       ok: true,
       ...assignment,
       notification,
       notificationSent: Boolean(notification),
-      message: `${payload.driverName} has been assigned ${payload.vanLabel} for ${date}. Notification sent to driver.`,
+      message: `${payload.driverName} has been assigned ${payload.displayName} for ${date}. Notification sent to driver.`,
     };
   }
 
   const assignment = await saveAssignedVehicle(payload);
-  const notification = await saveAssignmentNotification(assignment);
+  const notification = await saveAssignmentNotification(payload);
 
   return {
     ok: true,
     ...assignment,
     notification,
     notificationSent: Boolean(notification),
-    message: `${payload.driverName} has been assigned ${payload.vanLabel} for ${date}. Notification sent to driver.`,
+    message: `${payload.driverName} has been assigned ${payload.displayName} for ${date}. Notification sent to driver.`,
   };
 }
 
@@ -232,6 +263,12 @@ export async function assignBulk(rows, { date, assignedBy, autoSms } = {}) {
         driverName: row.driverName,
         vanId: row.vanId,
         vanLabel: row.vanLabel,
+        vehicleId: row.vehicleId,
+        displayName: row.displayName,
+        imageUrl: row.imageUrl,
+        model: row.model,
+        vin: row.vin,
+        isDemo: row.isDemo,
         assignedBy,
         autoSms,
         type: "bulk",
@@ -250,7 +287,7 @@ export async function assignBulk(rows, { date, assignedBy, autoSms } = {}) {
       ),
     );
     const notifications = await Promise.all(
-      savedRows.map((assignment) => saveAssignmentNotification(assignment)),
+      payloads.map((payload) => saveAssignmentNotification(payload)),
     );
     return {
       ok: true,
@@ -266,7 +303,7 @@ export async function assignBulk(rows, { date, assignedBy, autoSms } = {}) {
     ),
   );
   const notifications = await Promise.all(
-    savedRows.map((assignment) => saveAssignmentNotification(assignment)),
+    payloads.map((payload) => saveAssignmentNotification(payload)),
   );
 
   return {
@@ -282,7 +319,7 @@ export async function getAssignmentHistory() {
     const snap = await getDocs(collectionGroup(db, "assigned_vehicles"));
     return snap.docs
       .map((item) => mapAssignmentToHistory({ id: item.id, ...item.data() }))
-      .filter((assignment) => assignment.status === true)
+      .filter((assignment) => assignment.isActive === true)
       .sort((a, b) => {
         const aTime = a.createdAt?.toMillis?.() || 0;
         const bTime = b.createdAt?.toMillis?.() || 0;

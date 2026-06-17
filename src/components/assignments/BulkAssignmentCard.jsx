@@ -56,7 +56,14 @@ export default function BulkAssignmentCard({
         driverUid: driver?.uid || r.driverId,
         driverId: driver?.driverId || "",
         driverName: driver?.name || "",
-        vanLabel: van?.label || "",
+        vanId: van?.vehicleId || van?.id || r.vanId,
+        vanLabel: van?.displayName || van?.label || "",
+        vehicleId: van?.vehicleId || van?.id || r.vanId,
+        displayName: van?.displayName || van?.label || "",
+        imageUrl: van?.imageUrl || "",
+        model: van?.model || "",
+        vin: van?.vin || "",
+        isDemo: Boolean(van?.isDemo),
         status: Boolean(r.vanId),
       };
     });

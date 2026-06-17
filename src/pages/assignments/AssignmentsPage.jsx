@@ -45,7 +45,19 @@ export default function AssignmentsPage() {
             email: x.email,
           })),
         );
-        setVans(v.map((x) => ({ id: x.id, label: x.vanNumber })));
+        setVans(
+          v.map((x) => ({
+            ...x,
+            id: x.vehicleId || x.id,
+            vehicleId: x.vehicleId || x.id,
+            label: x.displayName || x.vanNumber || x.label || "",
+            displayName: x.displayName || x.vanNumber || x.label || "",
+            imageUrl: x.imageUrl || "",
+            model: x.model || "",
+            vin: x.vin || "",
+            isDemo: Boolean(x.isDemo),
+          })),
+        );
       } catch (ex) {
         if (!mounted) return;
         setError(getAssignmentsErrorMessage(ex));
@@ -77,8 +89,14 @@ export default function AssignmentsPage() {
         driverUid: driver.uid,
         driverId: driver?.driverId || "",
         driverName: driver?.name || "",
-        vanId,
-        vanLabel: van?.label || "",
+        vanId: van.vehicleId || van.id,
+        vanLabel: van.displayName || van.label || "",
+        vehicleId: van.vehicleId || van.id,
+        displayName: van.displayName || van.label || "",
+        imageUrl: van.imageUrl || "",
+        model: van.model || "",
+        vin: van.vin || "",
+        isDemo: Boolean(van.isDemo),
         assignedBy: user?.name || user?.email || "Admin",
         autoSms,
       });
