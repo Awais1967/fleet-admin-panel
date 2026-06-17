@@ -136,6 +136,26 @@ async function saveAssignmentNotification(assignment) {
   return { id: savedSnap.id, ...savedSnap.data() };
 }
 
+async function assertVehicleAvailableForDriver(vehicleId, driverUid) {
+  if (!isFirebaseConfigured || !db) return;
+
+  const snap = await getDocs(collectionGroup(db, "assigned_vehicles"));
+  const existing = snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .find(
+      (item) =>
+        item.isActive === true &&
+        String(item.vehicleId || item.id || "") === String(vehicleId) &&
+        String(item.driverId || "") !== String(driverUid),
+    );
+
+  if (existing) {
+    throw new Error(
+      `${existing.displayName || vehicleId} is already assigned to another driver.`,
+    );
+  }
+}
+
 async function saveAssignedVehicle(assignment) {
   if (!assignment?.driverUid) {
     throw new Error("Driver Firebase UID is missing. Select a valid driver.");
@@ -148,6 +168,8 @@ async function saveAssignedVehicle(assignment) {
   }
 
   const vehicleId = String(selectedVehicleId);
+  await assertVehicleAvailableForDriver(vehicleId, assignment.driverUid);
+
   const payload = {
     assignedAt: serverTimestamp(),
     createdAt: serverTimestamp(),

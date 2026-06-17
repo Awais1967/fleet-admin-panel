@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import AssignmentAlertModal from "./AssignmentAlertModal";
 
 export default function BulkAssignmentCard({
+  assignedVehicles = [],
   drivers = [],
   vans = [],
   onConfirm,
@@ -32,6 +33,15 @@ export default function BulkAssignmentCard({
     () => new Set(rows.map((r) => r.vanId).filter(Boolean)),
     [rows],
   );
+  const assignedVehicleDriverMap = useMemo(() => {
+    const m = new Map();
+    assignedVehicles.forEach((assignment) => {
+      if (assignment?.isActive !== true) return;
+      const vehicleId = assignment.vehicleId || assignment.id;
+      if (vehicleId) m.set(String(vehicleId), String(assignment.driverId || ""));
+    });
+    return m;
+  }, [assignedVehicles]);
 
   const handleVanChange = (driverId, vanId) => {
     setRows((prev) =>
@@ -41,10 +51,16 @@ export default function BulkAssignmentCard({
 
   const driverLabel = (driver) => driver?.name || "Unnamed Driver";
 
-  const statusOf = (r) =>
-    r.vanId
-      ? { text: "Ready", cls: "text-teal-700" }
-      : { text: "No van selected", cls: "text-rose-600" };
+  const statusOf = (r) => {
+    if (!r.vanId) return { text: "No van selected", cls: "text-rose-600" };
+
+    const assignedDriverId = assignedVehicleDriverMap.get(String(r.vanId));
+    if (assignedDriverId && assignedDriverId !== String(r.driverId)) {
+      return { text: "Already assigned", cls: "text-rose-600" };
+    }
+
+    return { text: "Ready", cls: "text-teal-700" };
+  };
 
   const handleConfirm = async () => {
     const skipped = rows.filter((r) => !r.vanId).length;
@@ -123,15 +139,25 @@ export default function BulkAssignmentCard({
                     >
                       <option value="">Select Van</option>
                       {vans.map((v) => (
-                        <option
-                          key={v.id}
-                          value={v.id}
-                          disabled={
-                            selectedVanIds.has(v.id) && r.vanId !== v.id
-                          }
-                        >
-                          {v.label}
-                        </option>
+                        (() => {
+                          const assignedDriverId = assignedVehicleDriverMap.get(
+                            String(v.id),
+                          );
+                          const assignedToOtherDriver =
+                            Boolean(assignedDriverId) &&
+                            assignedDriverId !== String(r.driverId);
+                          const selectedInOtherRow =
+                            selectedVanIds.has(v.id) && r.vanId !== v.id;
+                          const disabled =
+                            assignedToOtherDriver || selectedInOtherRow;
+                          return (
+                            <option key={v.id} value={v.id} disabled={disabled}>
+                              {assignedToOtherDriver
+                                ? `${v.label} (Assigned)`
+                                : v.label}
+                            </option>
+                          );
+                        })()
                       ))}
                     </select>
                   </div>

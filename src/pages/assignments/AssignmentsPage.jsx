@@ -21,6 +21,7 @@ export default function AssignmentsPage() {
   const { user } = useAuth();
   const [drivers, setDrivers] = useState([]);
   const [vans, setVans] = useState([]);
+  const [activeAssignments, setActiveAssignments] = useState([]);
   const [error, setError] = useState("");
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
@@ -31,9 +32,10 @@ export default function AssignmentsPage() {
     let mounted = true;
     (async () => {
       try {
-        const [d, v] = await Promise.all([
+        const [d, v, a] = await Promise.all([
           driversService.getDrivers(),
           vansService.getVans(),
+          assignmentsService.getAssignmentHistory(),
         ]);
         if (!mounted) return;
         setDrivers(
@@ -58,19 +60,26 @@ export default function AssignmentsPage() {
             isDemo: Boolean(x.isDemo),
           })),
         );
+        setActiveAssignments(a);
       } catch (ex) {
         if (!mounted) return;
         setError(getAssignmentsErrorMessage(ex));
       }
     })();
     return () => (mounted = false);
-  }, []);
+  }, [historyRefreshKey]);
 
   const onAssign = async ({ date, driverId: selectedDriverUid, vanId, autoSms }) => {
     try {
       setError("");
       const driver = drivers.find((item) => item.uid === selectedDriverUid);
       const van = vans.find((item) => item.id === vanId);
+      const existingAssignment = activeAssignments.find(
+        (item) =>
+          item.isActive === true &&
+          String(item.vehicleId || item.id || "") === String(vanId) &&
+          String(item.driverId || "") !== String(selectedDriverUid),
+      );
 
       if (!driver) {
         throw new Error("Selected driver was not found. Refresh and select the driver again.");
@@ -82,6 +91,12 @@ export default function AssignmentsPage() {
 
       if (!van) {
         throw new Error("Selected van was not found. Refresh and select the van again.");
+      }
+
+      if (existingAssignment) {
+        throw new Error(
+          `${existingAssignment.displayName || van.label} is already assigned to another driver.`,
+        );
       }
 
       const res = await assignmentsService.assignDaily({
@@ -128,8 +143,14 @@ export default function AssignmentsPage() {
       <div className="text-xl font-semibold text-slate-900">Assignments</div>
       {error ? <ErrorState message={error} /> : null}
 
-      <DailyAssignmentCard drivers={drivers} vans={vans} onAssign={onAssign} />
+      <DailyAssignmentCard
+        assignedVehicles={activeAssignments}
+        drivers={drivers}
+        vans={vans}
+        onAssign={onAssign}
+      />
       <BulkAssignmentCard
+        assignedVehicles={activeAssignments}
         drivers={drivers}
         vans={vans}
         onConfirm={onBulkConfirm}

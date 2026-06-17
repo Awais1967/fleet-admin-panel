@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 export default function DailyAssignmentCard({
+  assignedVehicles = [],
   drivers = [],
   vans = [],
   onAssign,
@@ -14,6 +15,23 @@ export default function DailyAssignmentCard({
 
   const driverOptions = useMemo(() => drivers, [drivers]);
   const vanOptions = useMemo(() => vans, [vans]);
+  const assignedVehicleDriverMap = useMemo(() => {
+    const map = new Map();
+    assignedVehicles.forEach((assignment) => {
+      if (assignment?.isActive !== true) return;
+      const vehicleId = assignment.vehicleId || assignment.id;
+      if (vehicleId) map.set(String(vehicleId), String(assignment.driverId || ""));
+    });
+    return map;
+  }, [assignedVehicles]);
+
+  useEffect(() => {
+    if (!vanId) return;
+    const assignedDriverId = assignedVehicleDriverMap.get(String(vanId));
+    if (assignedDriverId && assignedDriverId !== String(driverId || "")) {
+      setVanId("");
+    }
+  }, [assignedVehicleDriverMap, driverId, vanId]);
 
   const handleAssign = () => {
     if (!canAssign) return;
@@ -75,11 +93,17 @@ export default function DailyAssignmentCard({
               className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-teal-600 bg-white"
             >
               <option value="">Select Van</option>
-              {vanOptions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
+              {vanOptions.map((v) => {
+                const assignedDriverId = assignedVehicleDriverMap.get(String(v.id));
+                const disabled =
+                  Boolean(assignedDriverId) &&
+                  assignedDriverId !== String(driverId || "");
+                return (
+                  <option key={v.id} value={v.id} disabled={disabled}>
+                    {disabled ? `${v.label} (Assigned)` : v.label}
+                  </option>
+                );
+              })}
             </select>
           </Field>
         </div>
